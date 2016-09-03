@@ -1,0 +1,2 @@
+org.projectsforge.xwiki.registrationcodes.service.DefaultRegistrationCodesService
+org.projectsforge.xwiki.registrationcodes.service.RegistrationCodesScriptService
