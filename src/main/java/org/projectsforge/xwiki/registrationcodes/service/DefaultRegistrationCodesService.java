@@ -112,6 +112,7 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
           }
           addToGroup(user, wikiName, addToGroups);
           wikiUserManager.addMember(user, wikiName);
+          logger.debug("Wiki {} members : {}", wikiName, wikiUserManager.getMembers(wikiName));
         }
 
         regCode.addUser(user);
@@ -155,10 +156,12 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
       }
       if (!alreadyAMember) {
         BaseObject xobject = groupDoc.newXObject(xwikiGroupsRef, context);
-
         xobject.setStringValue("member", userRef);
         groupDoc.setContentAuthorReference(groupDoc.getAuthorReference());
         xwiki.saveDocument(groupDoc, context);
+        if (logger.isDebugEnabled()) {
+          logger.debug("Group {} on {} : {}", groupRef, wikiName, groupDoc);
+        }
       }
     }
   }
