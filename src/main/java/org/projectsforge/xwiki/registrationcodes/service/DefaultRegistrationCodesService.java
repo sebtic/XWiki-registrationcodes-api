@@ -29,7 +29,6 @@ import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.objects.BaseObject;
-import com.xpn.xwiki.user.api.XWikiGroupService;
 
 /**
  * The Class DefaultRegistrationCodesService.
@@ -64,10 +63,6 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
   /** The wiki descriptor manager. */
   @Inject
   private WikiDescriptorManager wikiDescriptorManager;
-
-  /** The xwiki group service. */
-  @Inject
-  private XWikiGroupService xwikiGroupService;
 
   /*
    * (non-Javadoc)
@@ -183,8 +178,7 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
         groupDoc.setContentAuthorReference(groupDoc.getAuthorReference());
         xwiki.saveDocument(groupDoc, context);
         if (logger.isDebugEnabled()) {
-          logger.debug("{} added to group {}. Group members are {}", userRef, group,
-              xwikiGroupService.getAllMembersNamesForGroup(group, Integer.MAX_VALUE, 0, context));
+          logger.debug("{} added to group {}.", userRef, group);
         }
       }
     } catch (XWikiException ex) {
