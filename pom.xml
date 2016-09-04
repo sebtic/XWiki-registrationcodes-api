@@ -158,6 +158,11 @@
 			<version>${platform.version}</version>
 			<scope>provided</scope>
 		</dependency>
+		<dependency>
+			<groupId>org.webjars</groupId>
+			<artifactId>select2</artifactId>
+			<version>4.0.2</version>
+		</dependency>
 	</dependencies>
 
 	<repositories>
