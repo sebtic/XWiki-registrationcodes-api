@@ -1,6 +1,7 @@
 package org.projectsforge.xwiki.registrationcodes.service;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 import javax.inject.Inject;
@@ -151,6 +152,13 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
       XWikiDocument groupDoc = xwiki.getDocument(groupRef, context);
       List<BaseObject> xobjects = groupDoc.getXObjects(GROUPCLASS_REFERENCE);
 
+      boolean alreadyAMember = false;
+      if (groupDoc.isNew() || xobjects == null) {
+        // if xobjects == null then it is not a group
+        logger.warn("Group {} skipped since it is not a group", group);
+        return;
+      }
+
       String user;
       if (groupRef.getWikiReference().equals(userRef.getWikiReference())) {
         // group and user on same wiki
@@ -159,15 +167,8 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
         user = userRef.toString();
       }
 
-      boolean alreadyAMember = false;
-      if (xobjects == null) {
-        // if xobjects == null then it is not a group
-        logger.warn("Group {} skipped since it is not a group", group);
-        return;
-      }
-
       for (BaseObject xobject : xobjects) {
-        if (user.equals(xobject.getStringValue("member"))) {
+        if (xobject != null && Objects.equals(user, xobject.getStringValue("member"))) {
           alreadyAMember = true;
         }
       }
