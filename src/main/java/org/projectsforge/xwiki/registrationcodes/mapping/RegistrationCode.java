@@ -1,5 +1,6 @@
 package org.projectsforge.xwiki.registrationcodes.mapping;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Date;
 import java.util.List;
@@ -140,11 +141,15 @@ public class RegistrationCode {
   /**
    * Adds the user.
    *
-   * @param userRef
-   *          the user ref
+   * @param user
+   *          the user
    */
-  public void addUser(String userRef) {
-    getUsers().add(userRef);
+  public void addUser(String user) {
+    List<String> users = new ArrayList<>(getUsers());
+    if (!users.contains(user)) {
+      users.add(user);
+    }
+    xobject.setStringListValue(FIELD_USERS, users);
     xobject.setDateValue(FIELD_LAST_USED, new Date());
   }
 
