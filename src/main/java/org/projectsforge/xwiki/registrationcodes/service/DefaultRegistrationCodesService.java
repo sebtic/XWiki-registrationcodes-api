@@ -1,7 +1,6 @@
 package org.projectsforge.xwiki.registrationcodes.service;
 
 import java.util.List;
-import java.util.Objects;
 import java.util.UUID;
 
 import javax.inject.Inject;
@@ -13,10 +12,15 @@ import org.slf4j.Logger;
 import org.xwiki.component.annotation.Component;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
-import org.xwiki.model.reference.SpaceReference;
+import org.xwiki.model.reference.WikiReference;
 import org.xwiki.query.Query;
 import org.xwiki.query.QueryException;
 import org.xwiki.query.QueryManager;
+import org.xwiki.wiki.descriptor.WikiDescriptor;
+import org.xwiki.wiki.descriptor.WikiDescriptorManager;
+import org.xwiki.wiki.manager.WikiManagerException;
+import org.xwiki.wiki.user.WikiUserManager;
+import org.xwiki.wiki.user.WikiUserManagerException;
 
 import com.xpn.xwiki.XWiki;
 import com.xpn.xwiki.XWikiContext;
@@ -46,6 +50,12 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
   @Inject
   private Provider<XWikiContext> contextProvider;
 
+  @Inject
+  private WikiUserManager wikiUserManager;
+
+  @Inject
+  private WikiDescriptorManager wikiDescriptorManager;
+
   /*
    * (non-Javadoc)
    *
@@ -54,63 +64,103 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
    * activateRegitrationCode(java.lang.String, java.lang.String)
    */
   @Override
-  public boolean activateRegitrationCode(String code, String userRef) {
+  public String activateRegitrationCode(String code, String user) {
     XWikiContext context = getContext();
     XWiki xwiki = context.getWiki();
+
+    String cleanedCode = StringUtils.trimToEmpty(code);
 
     try {
       List<String> results = queryManager
           .createQuery(String.format(
               "from doc.object(%s) as regcode where doc.space like :space and regcode.active = 1 and regcode.code = :code",
               RegistrationCode.getClassReferenceAsString()), Query.XWQL)
-          .bindValue("code", StringUtils.trimToEmpty(code)).bindValue("space", "RegistrationCodes.Data.%").execute();
+          .bindValue("code", StringUtils.trimToEmpty(cleanedCode)).bindValue("space", "RegistrationCodes.Data.%")
+          .execute();
 
       if (results.isEmpty()) {
-        logger.warn("No result for registration code {} : {}. Rejecting activation.", code, results);
-        return false;
+        logger.warn("No result for registration code {} : {}. Rejecting activation.", cleanedCode, results);
+        return "noresult";
       }
       if (results.size() > 1) {
-        logger.warn("Multiple results for registration code {} : {}. Rejecting activation.", code, results);
-        return false;
+        logger.warn("Multiple results for registration code {} : {}. Rejecting activation.", cleanedCode, results);
+        return "multipleresults";
       }
 
-      DocumentReference regCodeRef = documentReferenceResolver.resolve(results.get(0),
-          new SpaceReference("XWiki", context.getWikiReference()));
+      DocumentReference regCodeRef = documentReferenceResolver.resolve(results.get(0), context.getWikiReference());
       XWikiDocument regCodeDoc = xwiki.getDocument(regCodeRef, context);
       RegistrationCode regCode = new RegistrationCode(this, regCodeDoc);
-      if (regCode.accept(code, userRef)) {
-        logger.debug("Registration code accepted for {}", userRef);
-        DocumentReference xwikiGroupsRef = new DocumentReference(context.getWikiId(), "XWiki", "XWikiGroups");
-        boolean found = false;
-        for (String group : regCode.getAddToGroups()) {
-          if (StringUtils.isBlank(group)) {
-            continue;
-          }
-          DocumentReference groupRef = documentReferenceResolver.resolve(group, context.getWikiReference());
-          XWikiDocument groupDoc = xwiki.getDocument(groupRef, context);
-          // search for already existing member in the group
-          List<BaseObject> xobjects = groupDoc.getXObjects(xwikiGroupsRef);
-          if (xobjects != null) {
-            for (BaseObject xobject : xobjects) {
-              found = found || (Objects.equals(xobject.getStringValue("member"), userRef));
+      if (regCode.accept(cleanedCode, user)) {
+        logger.debug("Registration code accepted for {}", user);
+        List<String> addToWikis = regCode.getAddToWikis();
+        List<String> addToGroups = regCode.getAddToWikis();
+
+        for (String addToWiki : addToWikis) {
+          // resolve alias into wikiid
+          String wikiName;
+          if (wikiDescriptorManager.exists(addToWiki)) {
+            wikiName = addToWiki;
+          } else {
+            // try by alias
+            WikiDescriptor wikiDescriptor = wikiDescriptorManager.getByAlias(addToWiki);
+            if (wikiDescriptor != null) {
+              wikiName = wikiDescriptor.getId();
+            } else {
+              logger.warn("Wiki {} skipped since unknown", addToWiki);
+              continue;
             }
           }
-          if (!found) {
-            logger.debug("Adding {} to group {}", userRef, groupRef);
-            groupDoc.newXObject(xwikiGroupsRef, context).setStringValue("member", userRef);
-            xwiki.saveDocument(groupDoc, context);
-          }
+          addToGroup(user, wikiName, addToGroups);
+          wikiUserManager.addMember(user, wikiName);
         }
 
-        regCode.addUser(userRef);
+        regCode.addUser(user);
         xwiki.saveDocument(regCodeDoc, context);
-        return true;
+        return "success";
       }
-    } catch (XWikiException | QueryException ex) {
+    } catch (XWikiException | QueryException | WikiManagerException | WikiUserManagerException ex) {
       logger.warn("An error occurred", ex);
     }
 
-    return false;
+    return "error";
+  }
+
+  private void addToGroup(String user, String wikiName, List<String> groups) throws XWikiException {
+    XWikiContext context = getContext();
+    XWiki xwiki = context.getWiki();
+    DocumentReference xwikiGroupsRef = new DocumentReference(wikiName, "XWiki", "XWikiGroups");
+
+    for (String group : groups) {
+      DocumentReference groupRef = documentReferenceResolver.resolve(group, new WikiReference(wikiName));
+      XWikiDocument groupDoc = xwiki.getDocument(groupRef, context);
+      List<BaseObject> xobjects = groupDoc.getXObjects(xwikiGroupsRef);
+
+      String userRef;
+      if (context.getWikiId().equals(wikiName)) {
+        // we are on the same wiki, keep short reference
+        userRef = user;
+      } else {
+        // we are on a different wiki, we need fully qualified reference
+        // (including wiki)
+        userRef = documentReferenceResolver.resolve(user, context.getWikiReference()).toString();
+      }
+
+      boolean alreadyAMember = false;
+      if (xobjects != null) {
+        for (BaseObject xobject : xobjects) {
+          if (userRef.equals(xobject.getStringValue("member"))) {
+            alreadyAMember = true;
+          }
+        }
+      }
+      if (!alreadyAMember) {
+        BaseObject xobject = groupDoc.newXObject(xwikiGroupsRef, context);
+
+        xobject.setStringValue("member", userRef);
+        groupDoc.setContentAuthorReference(groupDoc.getAuthorReference());
+        xwiki.saveDocument(groupDoc, context);
+      }
+    }
   }
 
   /*

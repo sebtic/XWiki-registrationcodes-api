@@ -1,5 +1,6 @@
 package org.projectsforge.xwiki.registrationcodes.mapping;
 
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -41,6 +42,9 @@ public class RegistrationCode {
 
   /** The Constant FIELD_ADD_TO_GROUPS. */
   private static final String FIELD_ADD_TO_GROUPS = "addToGroups";
+
+  /** The Constant FIELD_ADD_TO_WIKIS. */
+  private static final String FIELD_ADD_TO_WIKIS = "addToWiki";
 
   /** The Constant FIELD_USERS. */
   private static final String FIELD_USERS = "users";
@@ -151,7 +155,25 @@ public class RegistrationCode {
    */
   @SuppressWarnings("unchecked")
   public List<String> getAddToGroups() {
-    return xobject.getListValue(FIELD_ADD_TO_GROUPS);
+    List<String> result = xobject.getListValue(FIELD_ADD_TO_GROUPS);
+    if (result.isEmpty()) {
+      result = Collections.emptyList();
+    }
+    return result;
+  }
+
+  /**
+   * Gets the adds the to wikis.
+   *
+   * @return the adds the to wikis
+   */
+  @SuppressWarnings("unchecked")
+  public List<String> getAddToWikis() {
+    List<String> result = xobject.getListValue(FIELD_ADD_TO_WIKIS);
+    if (result.isEmpty()) {
+      result = Collections.emptyList();
+    }
+    return result;
   }
 
   /**

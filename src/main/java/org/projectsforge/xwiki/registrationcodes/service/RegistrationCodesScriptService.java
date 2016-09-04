@@ -27,9 +27,9 @@ public class RegistrationCodesScriptService implements ScriptService {
    *          the code
    * @param userRef
    *          the user ref
-   * @return true, if successful
+   * @return success, noresult, multipleresults, error
    */
-  public boolean activateRegitrationCode(String code, String userRef) {
+  public String activateRegitrationCode(String code, String userRef) {
     return service.activateRegitrationCode(code, userRef);
   }
 

@@ -18,9 +18,9 @@ public interface RegistrationCodesService {
    *          the code
    * @param userRef
    *          the user ref
-   * @return true, if successful
+   * @return success, noresult, multipleresults, error
    */
-  boolean activateRegitrationCode(String code, String userRef);
+  String activateRegitrationCode(String code, String userRef);
 
   /**
    * Gets the context.
