@@ -93,26 +93,31 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
       if (regCode.accept(cleanedCode, user)) {
         logger.debug("Registration code accepted for {}", user);
         List<String> addToWikis = regCode.getAddToWikis();
-        List<String> addToGroups = regCode.getAddToWikis();
+        List<String> addToGroups = regCode.getAddToGroups();
+        logger.debug("Adding {} to wikis {} and groups ", user, addToWikis, addToGroups);
 
-        for (String addToWiki : addToWikis) {
-          // resolve alias into wikiid
-          String wikiName;
-          if (wikiDescriptorManager.exists(addToWiki)) {
-            wikiName = addToWiki;
-          } else {
-            // try by alias
-            WikiDescriptor wikiDescriptor = wikiDescriptorManager.getByAlias(addToWiki);
-            if (wikiDescriptor != null) {
-              wikiName = wikiDescriptor.getId();
+        if (addToWikis.isEmpty()) {
+          addToGroup(user, context.getWikiId(), addToGroups);
+        } else {
+          for (String addToWiki : addToWikis) {
+            // resolve alias into wikiid
+            String wikiName;
+            if (wikiDescriptorManager.exists(addToWiki)) {
+              wikiName = addToWiki;
             } else {
-              logger.warn("Wiki {} skipped since unknown", addToWiki);
-              continue;
+              // try by alias
+              WikiDescriptor wikiDescriptor = wikiDescriptorManager.getByAlias(addToWiki);
+              if (wikiDescriptor != null) {
+                wikiName = wikiDescriptor.getId();
+              } else {
+                logger.warn("Wiki {} skipped since unknown", addToWiki);
+                continue;
+              }
             }
+            addToGroup(user, wikiName, addToGroups);
+            wikiUserManager.addMember(user, wikiName);
+            logger.debug("Wiki {} members : {}", wikiName, wikiUserManager.getMembers(wikiName));
           }
-          addToGroup(user, wikiName, addToGroups);
-          wikiUserManager.addMember(user, wikiName);
-          logger.debug("Wiki {} members : {}", wikiName, wikiUserManager.getMembers(wikiName));
         }
 
         regCode.addUser(user);
