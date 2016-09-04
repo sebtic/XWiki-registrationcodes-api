@@ -7,12 +7,14 @@ import javax.inject.Inject;
 import javax.inject.Provider;
 
 import org.apache.commons.lang.StringUtils;
+import org.projectsforge.xwiki.registrationcodes.Utils;
 import org.projectsforge.xwiki.registrationcodes.mapping.RegistrationCode;
 import org.slf4j.Logger;
 import org.xwiki.component.annotation.Component;
+import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
-import org.xwiki.model.reference.WikiReference;
+import org.xwiki.model.reference.EntityReference;
 import org.xwiki.query.Query;
 import org.xwiki.query.QueryException;
 import org.xwiki.query.QueryManager;
@@ -27,12 +29,17 @@ import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.objects.BaseObject;
+import com.xpn.xwiki.user.api.XWikiGroupService;
 
 /**
  * The Class DefaultRegistrationCodesService.
  */
 @Component
 public class DefaultRegistrationCodesService implements RegistrationCodesService {
+
+  /** The Constant GROUPCLASS_REFERENCE. */
+  public static final EntityReference GROUPCLASS_REFERENCE = new EntityReference("XWikiGroups", EntityType.DOCUMENT,
+      new EntityReference("XWiki", EntityType.SPACE));
 
   /** The logger. */
   @Inject
@@ -50,11 +57,17 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
   @Inject
   private Provider<XWikiContext> contextProvider;
 
+  /** The wiki user manager. */
   @Inject
   private WikiUserManager wikiUserManager;
 
+  /** The wiki descriptor manager. */
   @Inject
   private WikiDescriptorManager wikiDescriptorManager;
+
+  /** The xwiki group service. */
+  @Inject
+  private XWikiGroupService xwikiGroupService;
 
   /*
    * (non-Javadoc)
@@ -87,36 +100,27 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
         return "multipleresults";
       }
 
+      DocumentReference userRef = documentReferenceResolver.resolve(user, context.getWikiReference());
+
       DocumentReference regCodeRef = documentReferenceResolver.resolve(results.get(0), context.getWikiReference());
       XWikiDocument regCodeDoc = xwiki.getDocument(regCodeRef, context);
       RegistrationCode regCode = new RegistrationCode(this, regCodeDoc);
       if (regCode.accept(cleanedCode, user)) {
         logger.debug("Registration code accepted for {}", user);
-        List<String> addToWikis = regCode.getAddToWikis();
-        List<String> addToGroups = regCode.getAddToGroups();
-        logger.debug("Adding {} to wikis {} and groups {}", user, addToWikis, addToGroups);
 
-        if (addToWikis.isEmpty()) {
-          addToGroup(user, context.getWikiId(), addToGroups);
-        } else {
-          for (String addToWiki : addToWikis) {
-            // resolve alias into wikiid
-            String wikiName;
-            if (wikiDescriptorManager.exists(addToWiki)) {
-              wikiName = addToWiki;
-            } else {
-              // try by alias
-              WikiDescriptor wikiDescriptor = wikiDescriptorManager.getByAlias(addToWiki);
-              if (wikiDescriptor != null) {
-                wikiName = wikiDescriptor.getId();
-              } else {
-                logger.warn("Wiki {} skipped since unknown", addToWiki);
-                continue;
-              }
-            }
-            addToGroup(user, wikiName, addToGroups);
-            wikiUserManager.addMember(user, wikiName);
-            logger.debug("Wiki {} members : {}", wikiName, wikiUserManager.getMembers(wikiName));
+        {
+          List<String> addToWikis = regCode.getAddToWikis();
+          logger.debug("Adding {} to wikis {}", userRef, addToWikis);
+          for (String wikiname : addToWikis) {
+            addToWiki(userRef, wikiname);
+          }
+        }
+
+        {
+          List<String> addToGroups = regCode.getAddToGroups();
+          logger.debug("Adding {} to groups {}", userRef, addToGroups);
+          for (String group : addToGroups) {
+            addToGroup(userRef, group);
           }
         }
 
@@ -133,43 +137,103 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
     return "error";
   }
 
-  private void addToGroup(String user, String wikiName, List<String> groups) throws XWikiException {
-    XWikiContext context = getContext();
-    XWiki xwiki = context.getWiki();
-    DocumentReference xwikiGroupsRef = new DocumentReference(wikiName, "XWiki", "XWikiGroups");
+  /**
+   * Adds the to group.
+   *
+   * @param userRef
+   *          the user ref
+   * @param group
+   *          the group
+   * @throws XWikiException
+   *           the x wiki exception
+   */
+  private void addToGroup(DocumentReference userRef, String group) throws XWikiException {
+    try {
+      XWikiContext context = getContext();
+      XWiki xwiki = context.getWiki();
 
-    for (String group : groups) {
-      DocumentReference groupRef = documentReferenceResolver.resolve(group, new WikiReference(wikiName));
+      DocumentReference groupRef = documentReferenceResolver.resolve(group);
       XWikiDocument groupDoc = xwiki.getDocument(groupRef, context);
-      List<BaseObject> xobjects = groupDoc.getXObjects(xwikiGroupsRef);
+      List<BaseObject> xobjects = groupDoc.getXObjects(GROUPCLASS_REFERENCE);
 
-      String userRef;
-      if (context.getWikiId().equals(wikiName)) {
-        // we are on the same wiki, keep short reference
-        userRef = user;
+      String user;
+      if (groupRef.getWikiReference().equals(userRef.getWikiReference())) {
+        // group and user on same wiki
+        user = Utils.LOCAL_REFERENCE_SERIALIZER.serialize(userRef);
       } else {
-        // we are on a different wiki, we need fully qualified reference
-        // (including wiki)
-        userRef = documentReferenceResolver.resolve(user, context.getWikiReference()).toString();
+        user = userRef.toString();
       }
 
       boolean alreadyAMember = false;
-      if (xobjects != null) {
-        for (BaseObject xobject : xobjects) {
-          if (userRef.equals(xobject.getStringValue("member"))) {
-            alreadyAMember = true;
-          }
+      if (xobjects == null) {
+        // if xobjects == null then it is not a group
+        logger.warn("Group {} skipped since it is not a group", group);
+        return;
+      }
+
+      for (BaseObject xobject : xobjects) {
+        if (user.equals(xobject.getStringValue("member"))) {
+          alreadyAMember = true;
         }
       }
+
       if (!alreadyAMember) {
-        BaseObject xobject = groupDoc.newXObject(xwikiGroupsRef, context);
-        xobject.setStringValue("member", userRef);
+        BaseObject xobject = groupDoc.newXObject(GROUPCLASS_REFERENCE, context);
+        xobject.setStringValue("member", user);
         groupDoc.setContentAuthorReference(groupDoc.getAuthorReference());
         xwiki.saveDocument(groupDoc, context);
         if (logger.isDebugEnabled()) {
-          logger.debug("Group {} on {} : {}", groupRef, wikiName, groupDoc);
+          logger.debug("{} added to group {}. Group members are {}", userRef, group,
+              xwikiGroupService.getAllMembersNamesForGroup(group, Integer.MAX_VALUE, 0, context));
         }
       }
+    } catch (XWikiException ex) {
+      logger.warn("An error occurred while adding user " + userRef + " to group " + group, ex);
+      throw ex;
+    }
+  }
+
+  /**
+   * Adds the to wiki.
+   *
+   * @param userRef
+   *          the user ref
+   * @param wikiname
+   *          the wikiname
+   * @throws WikiManagerException
+   *           the wiki manager exception
+   * @throws WikiUserManagerException
+   *           the wiki user manager exception
+   */
+  private void addToWiki(DocumentReference userRef, String wikiname)
+      throws WikiManagerException, WikiUserManagerException {
+    try {
+      // resolve alias into wikiid
+      String realWikiname;
+      if (wikiDescriptorManager.exists(wikiname)) {
+        realWikiname = wikiname;
+      } else {
+        // try by alias
+        WikiDescriptor wikiDescriptor = wikiDescriptorManager.getByAlias(wikiname);
+        if (wikiDescriptor != null) {
+          realWikiname = wikiDescriptor.getId();
+        } else {
+          logger.warn("Wiki {} skipped since unknown", wikiname);
+          return;
+        }
+      }
+      XWikiContext context = getContext();
+      if (!context.getWikiId().equals(realWikiname)) {
+        // add to wiki only if we are not already on the wiki
+        wikiUserManager.addMember(userRef.toString(), realWikiname);
+        if (logger.isDebugEnabled()) {
+          logger.debug("{} added to wiki {}. Wiki members are {}", userRef, realWikiname,
+              wikiUserManager.getMembers(realWikiname));
+        }
+      }
+    } catch (WikiManagerException | WikiUserManagerException ex) {
+      logger.warn("An error occurred while adding user " + userRef + " to wiki " + wikiname, ex);
+      throw ex;
     }
   }
 
