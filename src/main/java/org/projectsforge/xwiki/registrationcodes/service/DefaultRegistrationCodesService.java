@@ -94,7 +94,7 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
         logger.debug("Registration code accepted for {}", user);
         List<String> addToWikis = regCode.getAddToWikis();
         List<String> addToGroups = regCode.getAddToGroups();
-        logger.debug("Adding {} to wikis {} and groups ", user, addToWikis, addToGroups);
+        logger.debug("Adding {} to wikis {} and groups {}", user, addToWikis, addToGroups);
 
         if (addToWikis.isEmpty()) {
           addToGroup(user, context.getWikiId(), addToGroups);
@@ -123,6 +123,8 @@ public class DefaultRegistrationCodesService implements RegistrationCodesService
         regCode.addUser(user);
         xwiki.saveDocument(regCodeDoc, context);
         return "success";
+      } else {
+        return "noresult";
       }
     } catch (XWikiException | QueryException | WikiManagerException | WikiUserManagerException ex) {
       logger.warn("An error occurred", ex);

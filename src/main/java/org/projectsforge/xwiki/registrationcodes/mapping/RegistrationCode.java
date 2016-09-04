@@ -44,7 +44,7 @@ public class RegistrationCode {
   private static final String FIELD_ADD_TO_GROUPS = "addToGroups";
 
   /** The Constant FIELD_ADD_TO_WIKIS. */
-  private static final String FIELD_ADD_TO_WIKIS = "addToWiki";
+  private static final String FIELD_ADD_TO_WIKIS = "addToWikis";
 
   /** The Constant FIELD_USERS. */
   private static final String FIELD_USERS = "users";
