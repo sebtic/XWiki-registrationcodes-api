@@ -4,7 +4,7 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>org.projectsforge.xwiki</groupId>
 	<artifactId>registrationcodes-api</artifactId>
-	<version>1.0.8</version>
+	<version>1.0.9</version>
 	<name>XWiki Registration Codes API</name>
 	<description>XWiki Registration Codes API</description>
 	<packaging>jar</packaging>
@@ -45,7 +45,26 @@
 		<java.version>1.8</java.version>
 	</properties>
 
+	<distributionManagement>
+		<repository>
+			<id>ssh-repository</id>
+			<url>sftp://maven@static.projectsforge.org:2223/maven/</url>
+		</repository>
+		<snapshotRepository>
+			<id>ssh-repository</id>
+			<url>sftp://maven@static.projectsforge.org:2223/maven/</url>
+		</snapshotRepository>
+	</distributionManagement>
+
 	<build>
+		<extensions>
+			<!-- Enabling the use of SSH -->
+			<extension>
+				<groupId>org.apache.maven.wagon</groupId>
+				<artifactId>wagon-ssh</artifactId>
+				<version>2.6</version>
+			</extension>
+		</extensions>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -189,15 +208,4 @@
 			</snapshots>
 		</repository>
 	</repositories>
-
-	<distributionManagement>
-		<repository>
-			<id>projectsforge-private-releases</id>
-			<url>https://nexus.projectsforge.org/repository/projectsforge-public-releases/</url>
-		</repository>
-		<snapshotRepository>
-			<id>projectsforge-private-snapshots</id>
-			<url>https://nexus.projectsforge.org/repository/projectsforge-public-snapshots//</url>
-		</snapshotRepository>
-	</distributionManagement>
 </project>
